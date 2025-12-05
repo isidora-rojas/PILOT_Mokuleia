@@ -1,0 +1,49 @@
+# -------------------------
+# Python cache
+# -------------------------
+__pycache__/
+*.pyc
+*.pyo
+
+# -------------------------
+# Data folders to ignore
+# -------------------------
+data_raw/
+data_interim/
+figs/
+Archive/
+rewriteupfrommeeting/
+
+# Ignore large or raw file types
+*.mat
+*.nc
+*.zarr
+*.npz
+*.tif
+*.hdr
+*.dat
+*.zip
+*.tar.gz
+
+# -------------------------
+# Notebook checkpoints
+# -------------------------
+.ipynb_checkpoints/
+
+# -------------------------
+# Parquet & large CSVs
+# -------------------------
+*.parquet
+
+
+# -------------------------
+# VSCode & editors
+# -------------------------
+.vscode/
+.idea/
+
+# -------------------------
+# Environment files
+# -------------------------
+.env
+.DS_Store
