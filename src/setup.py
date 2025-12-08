@@ -1,8 +1,11 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-from src.spectra import wavenumber
+from src.spectra import wavenumber, sensor_spectra
 from src.bulk_parameters import Hs_band, wavenumber_exact
+
+def xshore_gradient()
+    ''' Computes cross-shore gradient of water level between two sensors'''
 
 def Becker_setup(df_waves, S_near, S_far):
     '''

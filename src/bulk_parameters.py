@@ -3,6 +3,9 @@
 - Significant Wave Height
 - Offshore Wave Height via back refracting
 
+Note that some functions assume that spectra has been computed using 
+spectra/sensor_spectra function and in xarray.Dataset format. 
+
 '''
 import numpy as np
 import xarray as xr
@@ -62,6 +65,8 @@ def wavenumber_exact(omega: np.ndarray, depth: np.ndarray, tol: float = 1e-12, m
 
     k[mask] = k_curr
     return k
+
+
 def Hs_band(ds, fmin=None, fmax=None):
     da = ds.Seta if (fmin is None and fmax is None) else ds.Seta.sel(frequency=slice(fmin, fmax))
     m0 = da.integrate("frequency")                 # ∫ S_eta df  -> (time,)
