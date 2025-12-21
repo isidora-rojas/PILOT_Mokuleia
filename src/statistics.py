@@ -114,3 +114,75 @@ def analyze_and_plot(ax, df, x_col, y_col='n', x_label="", num_bins=20):
     ax.set_ylabel('Setup $\eta$ (m)', fontsize=11)
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=9, loc='lower right')
+
+    def plot_chisq_landscape(binned_df, h_col, l_col, y_col='n_mean', sigma_col='n_sem', 
+                        b_range=np.linspace(0, 1.5, 50), 
+                        c_range=np.linspace(-1.0, 1.0, 50),
+                        true_stockdon_point=(0.5, 0.5)):
+    """
+    Scans exponent grid using WEIGHTED fitting (Chi-Squared) to match curve_fit.
+    """
+    
+    # Extract data
+    H = binned_df[h_col].values
+    L = binned_df[l_col].values
+    Y = binned_df[y_col].values
+    Sigma = binned_df[sigma_col].values # <--- NEW: Get the error bars
+    
+    # Weights for polyfit are 1/sigma (because polyfit minimizes sum(w * residual)^2)
+    weights = 1.0 / Sigma 
+    
+    # Initialize grid
+    chi_grid = np.zeros((len(c_range), len(b_range)))
+    
+    print("Scanning exponent grid (Weighted)...")
+    for i, c_val in enumerate(c_range):
+        for j, b_val in enumerate(b_range):
+            Z = (H**b_val) * (L**c_val)
+            
+            try:
+                # 1. Weighted Linear Fit
+                # We pass w=weights so it finds the best 'a' and 'd' respecting the error bars
+                coeffs = np.polyfit(Z, Y, 1, w=weights)
+                p = np.poly1d(coeffs)
+                Y_pred = p(Z)
+                
+                # 2. Calculate Chi-Squared (Red)
+                # This matches what curve_fit minimizes
+                residuals = Y - Y_pred
+                chi_sq = np.sum((residuals / Sigma)**2)
+                
+                # Store reduced Chi-sq (normalized by N) for easier reading
+                chi_grid[i, j] = chi_sq / len(Y)
+                
+            except:
+                chi_grid[i, j] = np.nan
+
+    # --- PLOTTING ---
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Contour Plot (Now mapping Chi-Squared, not RMSE)
+    CS = ax.contour(b_range, c_range, chi_grid, levels=35, cmap='plasma', linewidths=1)
+    ax.clabel(CS, inline=1, fontsize=10, fmt='%.2f') 
+    
+    im = ax.imshow(chi_grid, extent=[b_range.min(), b_range.max(), c_range.min(), c_range.max()], 
+                   origin='lower', aspect='auto', cmap='plasma', alpha=0.3)
+    
+    # Find Minimum
+    min_idx = np.unravel_index(np.argmin(chi_grid), chi_grid.shape)
+    best_c = c_range[min_idx[0]]
+    best_b = b_range[min_idx[1]]
+    min_chi = chi_grid[min_idx]
+    
+    ax.plot(best_b, best_c, 'g*', markersize=15, label=f'Best Weighted Fit ({best_b:.2f}, {best_c:.2f})')
+    ax.plot(true_stockdon_point[0], true_stockdon_point[1], 'ko', markersize=10, markerfacecolor='white', label='Stockdon')
+
+    ax.set_xlabel(f'Power of $H_0$ ($b$)', fontsize=12, fontweight='bold')
+    ax.set_ylabel(f'Power of $L_0$ ($c$)', fontsize=12, fontweight='bold')
+    ax.set_title(f'Weighted Error ($\chi^2$)', fontsize=14)
+    ax.legend()
+    ax.grid(True, linestyle=':', alpha=0.6)
+    plt.colorbar(im, label='Reduced Chi-Squared')
+    plt.show()
+    
+    return best_b, best_c
