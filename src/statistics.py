@@ -2,6 +2,7 @@
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 
 def bin_stats(df, bin_col, agg_cols, bin_size=None, num_bins=20, min_points=5):
     """
@@ -115,10 +116,12 @@ def analyze_and_plot(ax, df, x_col, y_col='n', x_label="", num_bins=20):
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=9, loc='lower right')
 
-    def plot_chisq_landscape(binned_df, h_col, l_col, y_col='n_mean', sigma_col='n_sem', 
+def plot_chisq_landscape(binned_df, h_col, l_col, y_col='n_mean', sigma_col='n_sem', 
                         b_range=np.linspace(0, 1.5, 50), 
                         c_range=np.linspace(-1.0, 1.0, 50),
-                        true_stockdon_point=(0.5, 0.5)):
+                        levels=35,
+                        title = 'Weighted Error',
+                        true_stockdon_point=(0.5, 0.5)) :
     """
     Scans exponent grid using WEIGHTED fitting (Chi-Squared) to match curve_fit.
     """
@@ -162,7 +165,7 @@ def analyze_and_plot(ax, df, x_col, y_col='n', x_label="", num_bins=20):
     fig, ax = plt.subplots(figsize=(10, 8))
     
     # Contour Plot (Now mapping Chi-Squared, not RMSE)
-    CS = ax.contour(b_range, c_range, chi_grid, levels=35, cmap='plasma', linewidths=1)
+    CS = ax.contour(b_range, c_range, chi_grid, levels=levels, cmap='plasma', linewidths=1)
     ax.clabel(CS, inline=1, fontsize=10, fmt='%.2f') 
     
     im = ax.imshow(chi_grid, extent=[b_range.min(), b_range.max(), c_range.min(), c_range.max()], 
@@ -179,10 +182,12 @@ def analyze_and_plot(ax, df, x_col, y_col='n', x_label="", num_bins=20):
 
     ax.set_xlabel(f'Power of $H_0$ ($b$)', fontsize=12, fontweight='bold')
     ax.set_ylabel(f'Power of $L_0$ ($c$)', fontsize=12, fontweight='bold')
-    ax.set_title(f'Weighted Error ($\chi^2$)', fontsize=14)
+    ax.set_title(title, fontsize=14)
     ax.legend()
     ax.grid(True, linestyle=':', alpha=0.6)
     plt.colorbar(im, label='Reduced Chi-Squared')
     plt.show()
     
     return best_b, best_c
+
+# --- RUN THIS ---
