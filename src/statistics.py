@@ -45,6 +45,7 @@ def bin_stats(df, bin_col, agg_cols, bin_size=None, num_bins=20, min_points=5):
     # Current columns look like: ('H0', 'mean'), ('H0', 'std')...
     # We change them to: 'H0_mean', 'H0_std'...
     stats.columns = ['_'.join(col).strip() for col in stats.columns.values]
+    stats['bin_center'] = [c.mid for c in stats.index]
     
     # 7. Calculate SEM (Standard Error) for each variable
     for col in agg_cols:
