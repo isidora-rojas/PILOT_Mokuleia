@@ -137,7 +137,7 @@ def Spp_to_Seta(
 
 def sensor_spectra(
     df: pd.DataFrame,
-    nperseg: int = 3600 * 48,
+    nperseg: int = 4096,
     overlap_frac: float = 0.5,
     *,
     pressure_col: str = "p",
