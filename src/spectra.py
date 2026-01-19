@@ -57,6 +57,7 @@ def Spp_to_Seta(
     h1: np.ndarray,
     *,
     depth_interp: np.ndarray | None = None,
+    f_cutoff: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Convert a pressure spectrogram into surface-elevation spectra.
@@ -79,6 +80,8 @@ def Spp_to_Seta(
     depth_interp : np.ndarray, optional
         Pre-interpolated depth at 1 Hz. If omitted, a linear interpolation
         (limit 20 samples) is performed internally.
+    f_cutoff : float, optional
+        Cutoff frequency [Hz]. Energy above this frequency is set to 0.
 
     Returns
     -------
@@ -132,6 +135,9 @@ def Spp_to_Seta(
         transfer = np.cosh(k * depth_val) / (RHO_SEAWATER * G)
         Seta[:, col] = (transfer**2) * Spp[:, col]
 
+    if f_cutoff is not None:
+        Seta[freqs > f_cutoff, :] = 0.0
+
     return Seta, time_centers, depth_at_centers
 
 
@@ -142,6 +148,7 @@ def sensor_spectra(
     *,
     pressure_col: str = "p",
     depth_col: str = "h",
+    f_cutoff: float | None = 0.5,
 ) -> xr.Dataset:
     """
     Compute the pressure and surface-elevation spectra for a single sensor
@@ -163,6 +170,8 @@ def sensor_spectra(
         Column name for pressure (Pa).
     depth_col : str, optional
         Column name for depth (m).
+    f_cutoff : float, optional
+        Cutoff frequency [Hz] to suppress high-frequency noise tail. Default 0.5.
 
     Returns
     -------
@@ -211,6 +220,7 @@ def sensor_spectra(
         t_spec,
         df.index.to_numpy(),
         df[depth_col].to_numpy(),
+        f_cutoff=f_cutoff,
     )
 
     # ---- Pack into xarray.Dataset -----------------------------------------
