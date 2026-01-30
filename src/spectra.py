@@ -17,6 +17,7 @@ import pandas as pd
 import xarray as xr
 from scipy.signal import spectrogram, butter, filtfilt
 
+
 # You can centralize these in a config module if you like
 G = 9.81               # m/s^2
 RHO_SEAWATER = 1025.0  # kg/m^3
@@ -248,92 +249,195 @@ def sensor_spectra(
 
 
 
+## ------Complex Demodulation Function-------- ##
+
+
 def complex_demod(
     df,
-    start_date,
-    p_col="p",
-    window="hann",
-    nperseg=4096,
-    noverlap=2048,
-    f_swell=(0.05, 0.15),
-    f_env_max=0.02,   
+    start,
+    end,
+    p_col="h",
+    f_swell=(0.05, 0.2), 
+    f_env_max=0.04,      # 0.04 Hz is standard for IG-cutoff
     fs=1.0,
 ):
-    """
-    Perform complex demodulation to extract the swell envelope,
-    demodulated phase, and envelope energy from a pressure time series.
+    # 1. Subset
+    df_win = df.loc[start:end].copy()
+    if len(df_win) < 1024: return None
 
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Must have DatetimeIndex and a pressure column `p_col`.
-    start_date : str or datetime-like
-        Starting date for 24-hour window (e.g. "2007-12-24").
-    p_col : str
-        Column name for pressure.
+    x = df_win[p_col].to_numpy()
 
-    Returns
-    -------
-    dict with:
-        f0  : dominant swell frequency
-        A   : amplitude envelope
-        phi : demodulated phase (unwrapped)
-        E   : envelope energy
-        x_ss : swell-band filtered pressure
-        z   : complex envelope
-        t_sec : time in seconds from start
-        t    : datetime index
-    """
-    # ----- Restrict to selected day ---------------------------------------- #
-    start = pd.Timestamp(start_date)
-    end   = start + pd.Timedelta(days=1)
-    df = df.loc[start:end].copy()
+    # Detrend the raw signal before processing to remove tidal drift??
+    x = x - np.polyval(np.polyfit(np.arange(len(x)), x, 1), np.arange(len(x)))
+    
+    t_ns = df_win.index.values.astype('datetime64[ns]').astype(np.int64)
+    t_sec = (t_ns - t_ns[0]) / 1e9
 
-    # --- Extract pressure and time ----------------------------------------- #
-    p = df[p_col].to_numpy()
-    t_idx = df.index
+    # 2. Find the local peak frequency
+    # 17 minute spectral averaging
+    f, t_spec, Sxx = spectrogram(x, fs=fs, nperseg=1024, noverlap=512)
+    S_avg = Sxx.mean(axis=1)
+    mask = (f >= f_swell[0]) & (f <= f_swell[1])
+    f0 = f[mask][np.argmax(S_avg[mask])]
 
-    # Convert to seconds since start
-    t_int = t_idx.view("int64")
-    t_sec = (t_int - t_int[0]) / 1e9   # seconds as float
+    # 3. Bandpass (Isolating the Sea/Swell band)
+    nyq = 0.5 * fs
+    b_bp, a_bp = butter(4, [f_swell[0]/nyq, f_swell[1]/nyq], btype="band")
+    x_ss = filtfilt(b_bp, a_bp, x)
 
-    # --- Spectrogram to find dominant swell frequency ---------------------- #
-    f_spec, t_spec, S = spectrogram(
-        p, fs=fs, window=window, nperseg=nperseg,
-        noverlap=noverlap, detrend="linear",
-        scaling="density", mode="psd"
-    )
-    Pxx_avg = S.mean(axis=1)
+    # 4. Demodulate (Thomson & Emery Sec 5.5)
+    z_raw = x_ss * np.exp(-1j * 2 * np.pi * f0 * t_sec)
 
-    # find peak in swell band
-    fmin, fmax = f_swell
-    mask = (f_spec >= fmin) & (f_spec <= fmax)
-    f0 = f_spec[mask][np.argmax(Pxx_avg[mask])]
-
-    # --- Bandpass filter to isolate swell band ----------------------------- #
-    nyq = fs / 2.0
-    b_bp, a_bp = butter(4, [fmin/nyq, fmax/nyq], btype="band")
-    x_ss = filtfilt(b_bp, a_bp, p)
-
-    # --- Complex demodulation ---------------------------------------------- #
-    carrier = np.exp(-1j * 2 * np.pi * f0 * t_sec)
-    x_demod = x_ss * carrier
-
-    # --- Lowpass filter envelope ------------------------------------------- #
+    # 5. Low-pass (Isolating the Envelope)
+    # Using your f_env_max (e.g., 0.004Hz for very smooth or 0.04Hz for IG)
     b_lp, a_lp = butter(4, f_env_max/nyq, btype="low")
-    z = filtfilt(b_lp, a_lp, x_demod)    # complex envelope
+    z = filtfilt(b_lp, a_lp, z_raw)    
 
-    A = np.abs(z)
-    phi = np.unwrap(np.angle(z))
-    E = (A - A.mean())**2
+    # 6. Physical Scaling
+    A = 2 * np.abs(z)  # Amplitude
+    E = A**2           # Energy (Proportional to Radiation Stress)
 
     return {
         "f0": f0,
-        "A": A,
-        "phi": phi,
-        "E": E,
+        "period": 1/f0,
+        "A": pd.Series(A, index=df_win.index),
+        "E": pd.Series(E, index=df_win.index),
         "x_ss": x_ss,
-        "z": z,
-        "t_sec": t_sec,
-        "t": t_idx,
+        "t": df_win.index
     }
+
+def complex_demod_hourly(
+    df,
+    start,
+    end,
+    p_col="h",
+    f_swell=(0.05, 0.2),
+    f_env_max=0.04,
+    fs=1.0
+):
+    """
+    Performs complex demodulation in 1-hour blocks to track 
+    shifting carrier frequencies (f0) over time.
+    """
+    all_results = []
+    
+    # Create 1-hour bins
+    hours = pd.date_range(start=start, end=end, freq='1H')
+    
+    for h_start in hours:
+        h_end = h_start + pd.Timedelta(hours=1)
+        
+        # Use the logic from complex_demod function
+        res = complex_demod(df, h_start, h_end, p_col, f_swell, f_env_max, fs)
+        
+        if res is not None:
+            # Store the local results in a temporary DataFrame
+            temp_df = pd.DataFrame({
+                'A': res['A'],
+                'E': res['E'],
+                'x_ss': res['x_ss'],
+                'f0_local': res['f0']
+            }, index=res['t'])
+            all_results.append(temp_df)
+            
+    if not all_results:
+        return None
+        
+    # Combine everything back into one continuous DataFrame
+    final_df = pd.concat(all_results)
+    return final_df
+
+import numpy as np
+import pandas as pd
+from scipy.signal import spectrogram, butter, filtfilt
+
+def complex_demod_centroid(
+    df,
+    start,
+    end,
+    p_col="h",
+    f_swell=(0.05, 0.2), 
+    f_env_max=0.04,
+    fs=1.0,
+):
+    # 1. Subset
+    df_win = df.loc[start:end].copy()
+    if len(df_win) < 1024: return None
+
+    x = df_win[p_col].to_numpy()
+    x = x - np.polyval(np.polyfit(np.arange(len(x)), x, 1), np.arange(len(x)))
+    
+    t_ns = df_win.index.values.astype('datetime64[ns]').astype(np.int64)
+    t_sec = (t_ns - t_ns[0]) / 1e9
+
+    f, t_spec, Sxx = spectrogram(x, fs=fs, nperseg=1024, noverlap=512)
+    S_avg = Sxx.mean(axis=1)
+    mask = (f >= f_swell[0]) & (f <= f_swell[1])
+        
+        # Spectral Centroid Calculation
+    f_band = f[mask]
+    S_band = S_avg[mask]
+    f0 = np.sum(f_band * S_band) / np.sum(S_band)
+
+
+    # 3. Bandpass (Isolating the Sea/Swell band)
+    nyq = 0.5 * fs
+    b_bp, a_bp = butter(4, [f_swell[0]/nyq, f_swell[1]/nyq], btype="band")
+    x_ss = filtfilt(b_bp, a_bp, x)
+
+    # 4. Demodulate using f0
+    z_raw = x_ss * np.exp(-1j * 2 * np.pi * f0 * t_sec)
+
+    # 5. Low-pass to get the Envelope
+    b_lp, a_lp = butter(4, f_env_max/nyq, btype="low")
+    z = filtfilt(b_lp, a_lp, z_raw)    
+
+    A = 2 * np.abs(z)  # Amplitude Envelope
+
+    return {
+        "f0": f0,
+        "A": pd.Series(A, index=df_win.index),
+        "x_ss": pd.Series(x_ss, index=df_win.index), # Returned as Series for easy plotting
+        "t": df_win.index
+    }
+
+def complex_demod_centroid_hourly(
+    df,
+    start,
+    end,
+    p_col="h",
+    f_swell=(0.05, 0.2),
+    f_env_max=0.04,
+    fs=1.0
+):
+    """
+    Performs complex demodulation in 1-hour blocks to track 
+    shifting carrier frequencies (f0) over time.
+    """
+    all_results = []
+    
+    # Create 1-hour bins
+    hours = pd.date_range(start=start, end=end, freq='1H')
+    
+    for h_start in hours:
+        h_end = h_start + pd.Timedelta(hours=1)
+        
+        # Use the logic from complex_demod function
+        res = complex_demod_centroid(df, h_start, h_end, p_col, f_swell, f_env_max, fs)
+        
+        if res is not None:
+            # Store the local results in a temporary DataFrame
+            temp_df = pd.DataFrame({
+                'A': res['A'],
+                'E': res['E'],
+                'x_ss': res['x_ss'],
+                'f0_local': res['f0']
+            }, index=res['t'])
+            all_results.append(temp_df)
+            
+    if not all_results:
+        return None
+        
+    # Combine everything back into one continuous DataFrame
+    final_df = pd.concat(all_results)
+    return final_df
