@@ -1,3 +1,45 @@
+"""
+================================================================================
+COMPLEX DEMODULATION TOOLKIT 
+================================================================================
+
+This module implements Complex Demodulation (CD) techniques following the 
+methodology described by Thomson & Emery in 'Data Analysis Methods in 
+Physical Oceanography'.
+
+CORE CONCEPTS:
+Complex Demodulation is used to extract a slowly varying amplitude (envelope) 
+and phase of a specific 'carrier' frequency (e.g., swell) from a signal. 
+The process involves:
+1. Shifting the target frequency (f0) to 0 Hz (baseband) by multiplying the 
+   signal by exp(-i * 2 * pi * f0 * t).
+2. Low-pass filtering the result to isolate the envelope.
+3. Recovering the physical amplitude and energy density.
+
+
+
+APPLICATIONS IN THIS MODULE:
+- Research on wave transformation and infragravity (IG) wave energy.
+- Analysis of wave setup and forcing proxies at specific locations like 
+  Mokuleia reef.
+- Tracking non-stationary swell events, such as the January 13, 2008 swell.
+
+FUNCTIONS:
+- complex_demod: The base engine for a single window of data.
+- CD_hourly: Performs CD in sequential 1-hour blocks to account for 
+  non-stationary carrier frequencies over long durations.
+- CD_forced: A 'Parent-Toddeler' approach. It calculates the 
+  dominant carrier frequency from a 'clean' offshore sensor and forces 
+  that frequency onto a nearshore sensor to ensure consistent 
+  envelope extraction across reef environments.
+
+AUTHOR: [Isidora Rojas (i1rojas@ucsd.edu) / Scripps Institution of Oceanography]
+DATE: 2026-02-11
+================================================================================
+"""
+
+
+
 import numpy as np
 import pandas as pd
 from scipy.signal import spectrogram, butter, filtfilt, welch
@@ -14,12 +56,11 @@ def complex_demod(
     f0_override=None
 ):
     """
-    Implements Complex Demodulation following the technique described by 
-    Thomson & Emery (Data Analysis Methods in Physical Oceanography).
-
-    This method shifts the signal frequency content to baseband (zero frequency) 
-    by multiplying by exp(-i*2*pi*f0*t) and then low-pass filtering to extract 
-    the slowly varying amplitude (envelope) and phase of the swell.
+    Complex demodulation method:
+     - shifts the signal frequency content to baseband (zero frequency) 
+        by multiplying by exp(-i*2*pi*f0*t) 
+     - low-pass filtering to extract 
+         the slowly varying amplitude (envelope) and phase of the swell.
 
     Parameters:
     -----------
@@ -208,7 +249,7 @@ def CD_forced(
     f0_method="peak" # Method used to find f0 from the SOURCE sensor
 ):
     """
-    Performs 'Forced' Complex Demodulation in 1-hour blocks. .
+    Performs 'Forced' Complex Demodulation in 1-hour blocks.
     
     It derives the carrier frequency (f0) from a clean source (offshore)
     and forces that frequency onto the target sensor (nearshore) for 
