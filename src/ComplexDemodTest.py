@@ -42,7 +42,9 @@ def complex_demod(
         - 'centroid': Uses the energy-weighted mean frequency in the swell band.
         - 'manual': Uses 'f0_override' provided by user.
     f0_override : float, optional
-        Specific frequency to use if f0_method='manual'.
+        Specific frequency to use if f0_method='manual'. The purpose of this is to allow users to 
+        force a known carrier frequency (e.g., from a clean offshore sensor) onto the target sensor
+
 
     Returns:
     --------
@@ -128,7 +130,7 @@ def complex_demod(
     }
 
 
-def complex_demod_hourly(
+def CD_hourly(
     df,
     start,
     end,
@@ -194,7 +196,7 @@ def complex_demod_hourly(
     return final_df
 
 
-def complex_demod_forced(
+def CD_forced(
     df_target,       # The sensor to demodulate
     df_source,       # The sensor providing the carrier frequency
     start,
@@ -206,7 +208,7 @@ def complex_demod_forced(
     f0_method="peak" # Method used to find f0 from the SOURCE sensor
 ):
     """
-    Performs 'Forced' Complex Demodulation.
+    Performs 'Forced' Complex Demodulation in 1-hour blocks. .
     
     It derives the carrier frequency (f0) from a clean source (offshore)
     and forces that frequency onto the target sensor (nearshore) for 
