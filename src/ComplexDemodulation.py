@@ -7,7 +7,7 @@ This module implements Complex Demodulation (CD) techniques following the
 methodology described by Thomson & Emery in 'Data Analysis Methods in 
 Physical Oceanography'.
 
-CORE CONCEPTS:
+METHOD OVERVIEW:
 Complex Demodulation is used to extract a slowly varying amplitude (envelope) 
 and phase of a specific 'carrier' frequency (e.g., swell) from a signal. 
 The process involves:
